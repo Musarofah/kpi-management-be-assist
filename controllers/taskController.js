@@ -1,28 +1,43 @@
 const Task = require('../models/Task');
 const TaskHistory = require('../models/TaskHistory');
 
-// GET ALL TASKS
+// Normalize status string to Kanban standard
+const normalizeStatus = (status) => {
+  if (!status) return 'Backlog';
+  const s = status.trim().toLowerCase();
+  if (s === 'backlog' || s === 'pending') return 'Backlog';
+  if (s === 'ready') return 'Ready';
+  if (s === 'on progress' || s === 'in-progress' || s === 'inprogress' || s === 'onprogress') return 'On Progress';
+  if (s === 'code review' || s === 'codereview' || s === 'review') return 'Code Review';
+  if (s === 'qa') return 'QA';
+  if (s === 'done' || s === 'completed') return 'Done';
+  return status;
+};
+
+// GET ALL TASKS (Kanban & List)
 exports.getAll = async (req, res) => {
   try {
     const filter = {};
 
-    // Karyawan hanya bisa melihat task miliknya sendiri
-    if (req.user.role === 'karyawan') {
+    // Karyawan: jika diinginkan filter hanya miliknya saat query `my=true` atau default jika role karyawan
+    if (req.user && req.user.role === 'karyawan' && req.query.my === 'true') {
       filter.employee = req.user.id;
     }
 
-    // HR bisa melakukan filter berdasarkan employee, status, kpiIndicator
-    if (req.user.role === 'hr') {
-      if (req.query.employee) {
-        filter.employee = req.query.employee;
-      }
-      if (req.query.assignedBy) {
-        filter.assignedBy = req.query.assignedBy;
-      }
+    if (req.query.employee) {
+      filter.employee = req.query.employee;
     }
 
     if (req.query.status) {
-      filter.status = req.query.status;
+      filter.status = normalizeStatus(req.query.status);
+    }
+
+    if (req.query.sprint) {
+      filter.sprint = req.query.sprint;
+    }
+
+    if (req.query.priority) {
+      filter.priority = req.query.priority;
     }
 
     if (req.query.kpiIndicator) {
@@ -30,13 +45,18 @@ exports.getAll = async (req, res) => {
     }
 
     const tasks = await Task.find(filter)
-      .populate('employee', 'name email department position')
-      .populate('assignedBy', 'name email')
+      .populate('employee', 'name email department position avatar')
+      .populate('assignedBy', 'name email avatar')
       .sort({ createdAt: -1 });
 
-    res.json(tasks);
+    res.json({
+      success: true,
+      count: tasks.length,
+      data: tasks,
+      tasks,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -44,141 +64,269 @@ exports.getAll = async (req, res) => {
 exports.getById = async (req, res) => {
   try {
     const task = await Task.findById(req.params.id)
-      .populate('employee', 'name email department position')
-      .populate('assignedBy', 'name email');
+      .populate('employee', 'name email department position avatar')
+      .populate('assignedBy', 'name email avatar');
 
     if (!task) {
-      return res.status(404).json({ message: 'Task tidak ditemukan' });
+      return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
     }
 
-    // Karyawan hanya bisa mengakses task milik sendiri
-    if (req.user.role === 'karyawan' && task.employee._id.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Akses ditolak' });
-    }
-
-    res.json(task);
+    res.json({
+      success: true,
+      data: task,
+      task,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// CREATE TASK (HR Only)
+// CREATE TASK
 exports.create = async (req, res) => {
   try {
-    const { title, description, employee, dueDate, kpiIndicator } = req.body;
-
-    if (!title || !employee || !dueDate) {
-      return res.status(400).json({ message: 'Judul, karyawan penerima, dan due date wajib diisi' });
-    }
-
-    const task = await Task.create({
+    const {
       title,
       description,
       employee,
-      assignedBy: req.user.id,
       dueDate,
       kpiIndicator,
-      status: 'pending',
+      storyPoint,
+      priority,
+      status,
+      sprint,
+    } = req.body;
+
+    if (!title) {
+      return res.status(400).json({
+        success: false,
+        message: 'Judul task wajib diisi',
+      });
+    }
+
+    const assignedEmployee = employee || req.user.id;
+    const taskDueDate = dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // default +7 hari
+    const initialStatus = status ? normalizeStatus(status) : 'Backlog';
+
+    const task = await Task.create({
+      title,
+      description: description || '',
+      employee: assignedEmployee,
+      assignedBy: req.user.id,
+      dueDate: taskDueDate,
+      kpiIndicator: kpiIndicator || '',
+      storyPoint: Number(storyPoint) || 0,
+      priority: priority || 'Medium',
+      status: initialStatus,
+      sprint: sprint || 'Sprint 1',
+      isActiveSprint: true,
+      rejectCount: 0,
     });
 
-    // Catat histori pembuatan task
     await TaskHistory.create({
       task: task._id,
       user: req.user.id,
       action: 'create',
-      newStatus: 'pending',
-      notes: 'Task dibuat oleh HR',
+      newStatus: initialStatus,
+      notes: 'Task dibuat',
     });
 
+    const populatedTask = await Task.findById(task._id)
+      .populate('employee', 'name email department position avatar')
+      .populate('assignedBy', 'name email avatar');
+
     res.status(201).json({
+      success: true,
       message: 'Task berhasil dibuat',
-      task,
+      data: populatedTask,
+      task: populatedTask,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
 // UPDATE TASK DETAILS (HR Only)
 exports.update = async (req, res) => {
   try {
-    const { title, description, employee, dueDate, kpiIndicator } = req.body;
+    const {
+      title,
+      description,
+      employee,
+      dueDate,
+      kpiIndicator,
+      storyPoint,
+      priority,
+      status,
+      sprint,
+    } = req.body;
 
     const task = await Task.findById(req.params.id);
     if (!task) {
-      return res.status(404).json({ message: 'Task tidak ditemukan' });
+      return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
     }
 
-    // Update fields jika disediakan
     if (title !== undefined) task.title = title;
     if (description !== undefined) task.description = description;
     if (employee !== undefined) task.employee = employee;
     if (dueDate !== undefined) task.dueDate = dueDate;
     if (kpiIndicator !== undefined) task.kpiIndicator = kpiIndicator;
+    if (storyPoint !== undefined) task.storyPoint = Number(storyPoint);
+    if (priority !== undefined) task.priority = priority;
+    if (status !== undefined) task.status = normalizeStatus(status);
+    if (sprint !== undefined) task.sprint = sprint;
 
     await task.save();
 
-    // Catat histori update detail task
     await TaskHistory.create({
       task: task._id,
       user: req.user.id,
       action: 'update_details',
-      notes: 'Detail task diperbarui oleh HR',
+      notes: 'Detail task diperbarui',
     });
 
+    const populatedTask = await Task.findById(task._id)
+      .populate('employee', 'name email department position avatar')
+      .populate('assignedBy', 'name email avatar');
+
     res.json({
+      success: true,
       message: 'Task berhasil diperbarui',
-      task,
+      data: populatedTask,
+      task: populatedTask,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// UPDATE TASK STATUS (Karyawan & HR)
+// UPDATE TASK STATUS (Kanban Columns)
 exports.updateStatus = async (req, res) => {
   try {
     const { status, notes } = req.body;
 
     if (!status) {
-      return res.status(400).json({ message: 'Status wajib diisi' });
+      return res.status(400).json({
+        success: false,
+        message: 'Status wajib diisi',
+      });
     }
 
-    const validStatuses = ['pending', 'in-progress', 'completed', 'cancelled'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ message: 'Status tidak valid' });
-    }
+    const newStatus = normalizeStatus(status);
 
     const task = await Task.findById(req.params.id);
     if (!task) {
-      return res.status(404).json({ message: 'Task tidak ditemukan' });
-    }
-
-    // Karyawan hanya bisa update status task miliknya sendiri
-    if (req.user.role === 'karyawan' && task.employee.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Akses ditolak, hanya penerima tugas yang bisa mengubah status' });
+      return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
     }
 
     const previousStatus = task.status;
-    task.status = status;
+    task.status = newStatus;
     await task.save();
 
-    // Catat histori perubahan status
     await TaskHistory.create({
       task: task._id,
       user: req.user.id,
       action: 'update_status',
       previousStatus,
-      newStatus: status,
-      notes: notes || `Status diubah dari ${previousStatus} menjadi ${status}`,
+      newStatus,
+      notes: notes || `Status diubah dari ${previousStatus} menjadi ${newStatus}`,
     });
 
+    const populatedTask = await Task.findById(task._id)
+      .populate('employee', 'name email department position avatar')
+      .populate('assignedBy', 'name email avatar');
+
     res.json({
-      message: 'Status task berhasil diperbarui',
-      task,
+      success: true,
+      message: `Status task berhasil diperbarui menjadi ${newStatus}`,
+      data: populatedTask,
+      task: populatedTask,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// UPDATE STORY POINT (Khusus HR / PO)
+exports.updateStoryPoint = async (req, res) => {
+  try {
+    const { storyPoint, point, sp } = req.body;
+    const pointValue = storyPoint !== undefined ? storyPoint : (point !== undefined ? point : sp);
+
+    if (pointValue === undefined || isNaN(Number(pointValue))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nilai Story Point (angka) wajib diisi',
+      });
+    }
+
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
+    }
+
+    task.storyPoint = Number(pointValue);
+    await task.save();
+
+    await TaskHistory.create({
+      task: task._id,
+      user: req.user.id,
+      action: 'update_point',
+      notes: `Story Point diperbarui menjadi ${task.storyPoint} SP`,
+    });
+
+    const populatedTask = await Task.findById(task._id)
+      .populate('employee', 'name email department position avatar')
+      .populate('assignedBy', 'name email avatar');
+
+    res.json({
+      success: true,
+      message: `Story Point berhasil diset ke ${task.storyPoint} SP`,
+      data: populatedTask,
+      task: populatedTask,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// REJECT QA (Task mental kembali ke On Progress dengan backward counter)
+exports.rejectQA = async (req, res) => {
+  try {
+    const { reason, notes } = req.body;
+
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
+    }
+
+    const previousStatus = task.status;
+    task.status = 'On Progress';
+    task.rejectCount = (task.rejectCount || 0) + 1;
+    await task.save();
+
+    const rejectNote = reason || notes || `QA Rejected: Ditolak dan dikembalikan ke On Progress (Reject count: ${task.rejectCount})`;
+
+    await TaskHistory.create({
+      task: task._id,
+      user: req.user.id,
+      action: 'reject_qa',
+      previousStatus,
+      newStatus: 'On Progress',
+      notes: rejectNote,
+    });
+
+    const populatedTask = await Task.findById(task._id)
+      .populate('employee', 'name email department position avatar')
+      .populate('assignedBy', 'name email avatar');
+
+    res.json({
+      success: true,
+      message: `Task berhasil di-reject QA dan dikembalikan ke On Progress (Total reject: ${task.rejectCount})`,
+      data: populatedTask,
+      task: populatedTask,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -187,15 +335,17 @@ exports.remove = async (req, res) => {
   try {
     const task = await Task.findByIdAndDelete(req.params.id);
     if (!task) {
-      return res.status(404).json({ message: 'Task tidak ditemukan' });
+      return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
     }
 
-    // Hapus histori task yang bersangkutan (cascade delete)
     await TaskHistory.deleteMany({ task: req.params.id });
 
-    res.json({ message: 'Task beserta log historinya berhasil dihapus' });
+    res.json({
+      success: true,
+      message: 'Task beserta log historinya berhasil dihapus',
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -204,20 +354,19 @@ exports.getHistory = async (req, res) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) {
-      return res.status(404).json({ message: 'Task tidak ditemukan' });
-    }
-
-    // Karyawan hanya bisa melihat history task miliknya sendiri
-    if (req.user.role === 'karyawan' && task.employee.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Akses ditolak' });
+      return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
     }
 
     const history = await TaskHistory.find({ task: req.params.id })
-      .populate('user', 'name email role')
+      .populate('user', 'name email role avatar')
       .sort({ createdAt: -1 });
 
-    res.json(history);
+    res.json({
+      success: true,
+      data: history,
+      history,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };

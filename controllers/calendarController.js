@@ -1,18 +1,30 @@
 const CalendarEvent = require('../models/CalenderEvent');
+const Task = require('../models/Task');
 
 // GET ALL EVENTS
 exports.getAll = async (req, res) => {
   try {
     const filter = {};
 
-    // Filter berdasarkan range tanggal (misal untuk kalender bulanan/mingguan)
-    if (req.query.start && req.query.end) {
+    // Filter berdasarkan month & year (misal: ?month=8&year=2026)
+    if (req.query.month && req.query.year) {
+      const yr = parseInt(req.query.year, 10);
+      const mo = parseInt(req.query.month, 10);
+      const monthIndex = (mo >= 1 && mo <= 12) ? mo - 1 : mo;
+
+      const startOfMonth = new Date(Date.UTC(yr, monthIndex, 1, 0, 0, 0));
+      const endOfMonth = new Date(Date.UTC(yr, monthIndex + 1, 0, 23, 59, 59, 999));
+
+      filter.date = {
+        $gte: startOfMonth,
+        $lte: endOfMonth,
+      };
+    } else if (req.query.start && req.query.end) {
       filter.date = {
         $gte: new Date(req.query.start),
         $lte: new Date(req.query.end),
       };
     } else if (req.query.date) {
-      // Filter tanggal spesifik
       const targetDate = new Date(req.query.date);
       const nextDay = new Date(targetDate);
       nextDay.setDate(nextDay.getDate() + 1);
@@ -23,24 +35,27 @@ exports.getAll = async (req, res) => {
       };
     }
 
-    // Filter berdasarkan team
     if (req.query.team) {
       filter.team = req.query.team;
     }
 
-    // Filter berdasarkan type event
     if (req.query.eventType) {
       filter.eventType = req.query.eventType;
     }
 
     const events = await CalendarEvent.find(filter)
-      .populate('createdBy', 'name email role')
-      .populate('relatedTask', 'title status dueDate')
+      .populate('createdBy', 'name email role avatar')
+      .populate('relatedTask', 'title status dueDate storyPoint')
       .sort({ date: 1 });
 
-    res.json(events);
+    res.json({
+      success: true,
+      count: events.length,
+      data: events,
+      events,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -48,59 +63,76 @@ exports.getAll = async (req, res) => {
 exports.getById = async (req, res) => {
   try {
     const event = await CalendarEvent.findById(req.params.id)
-      .populate('createdBy', 'name email role')
-      .populate('relatedTask', 'title status dueDate');
+      .populate('createdBy', 'name email role avatar')
+      .populate('relatedTask', 'title status dueDate storyPoint');
 
     if (!event) {
-      return res.status(404).json({ message: 'Event tidak ditemukan' });
+      return res.status(404).json({ success: false, message: 'Event tidak ditemukan' });
     }
 
-    res.json(event);
+    res.json({
+      success: true,
+      data: event,
+      event,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// CREATE EVENT (HR Only)
+// CREATE EVENT
 exports.create = async (req, res) => {
   try {
-    const { title, date, eventType, status, team, relatedTask } = req.body;
+    const { title, description, date, endDate, eventType, status, team, relatedTask } = req.body;
 
     if (!title || !date) {
-      return res.status(400).json({ message: 'Judul event dan tanggal wajib diisi' });
+      return res.status(400).json({
+        success: false,
+        message: 'Judul event dan tanggal wajib diisi',
+      });
     }
 
     const event = await CalendarEvent.create({
       title,
-      date,
-      eventType,
+      description: description || '',
+      date: new Date(date),
+      endDate: endDate ? new Date(endDate) : undefined,
+      eventType: eventType || 'agenda',
       status: status || 'Scheduled',
-      team,
+      team: team || 'General',
       relatedTask: relatedTask || undefined,
-      createdBy: req.user.id,
+      createdBy: req.user ? req.user.id : undefined,
     });
 
+    const populatedEvent = await CalendarEvent.findById(event._id)
+      .populate('createdBy', 'name email role avatar')
+      .populate('relatedTask', 'title status dueDate storyPoint');
+
     res.status(201).json({
-      message: 'Event berhasil dibuat di kalender',
-      event,
+      success: true,
+      message: 'Event berhasil ditambahkan ke kalender',
+      data: populatedEvent,
+      event: populatedEvent,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// UPDATE EVENT (HR Only)
+// UPDATE EVENT
 exports.update = async (req, res) => {
   try {
-    const { title, date, eventType, status, team, relatedTask } = req.body;
+    const { title, description, date, endDate, eventType, status, team, relatedTask } = req.body;
 
     const event = await CalendarEvent.findById(req.params.id);
     if (!event) {
-      return res.status(404).json({ message: 'Event tidak ditemukan' });
+      return res.status(404).json({ success: false, message: 'Event tidak ditemukan' });
     }
 
     if (title !== undefined) event.title = title;
-    if (date !== undefined) event.date = date;
+    if (description !== undefined) event.description = description;
+    if (date !== undefined) event.date = new Date(date);
+    if (endDate !== undefined) event.endDate = endDate ? new Date(endDate) : undefined;
     if (eventType !== undefined) event.eventType = eventType;
     if (status !== undefined) event.status = status;
     if (team !== undefined) event.team = team;
@@ -108,25 +140,34 @@ exports.update = async (req, res) => {
 
     await event.save();
 
+    const populatedEvent = await CalendarEvent.findById(event._id)
+      .populate('createdBy', 'name email role avatar')
+      .populate('relatedTask', 'title status dueDate storyPoint');
+
     res.json({
+      success: true,
       message: 'Event kalender berhasil diperbarui',
-      event,
+      data: populatedEvent,
+      event: populatedEvent,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// DELETE EVENT (HR Only)
+// DELETE EVENT
 exports.remove = async (req, res) => {
   try {
     const event = await CalendarEvent.findByIdAndDelete(req.params.id);
     if (!event) {
-      return res.status(404).json({ message: 'Event tidak ditemukan' });
+      return res.status(404).json({ success: false, message: 'Event tidak ditemukan' });
     }
 
-    res.json({ message: 'Event kalender berhasil dihapus' });
+    res.json({
+      success: true,
+      message: 'Event kalender berhasil dihapus',
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };

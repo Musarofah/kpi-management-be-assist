@@ -14,13 +14,12 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'Password wajib diisi'],
     minlength: 6,
     select: false,
   },
   role: {
     type: String,
-    enum: ['karyawan', 'hr'],
+    enum: ['karyawan', 'hr', 'admin'],
     default: 'karyawan',
   },
   department: {
@@ -31,6 +30,14 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
-}, { timestamps: true }); // otomatis nambah createdAt & updatedAt
+  avatar: {
+    type: String,
+    default: '',
+  },
+  googleId: {
+    type: String,
+    default: '',
+  },
+}, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

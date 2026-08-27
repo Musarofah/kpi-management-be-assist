@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect, hrOnly } = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 const {
   getAll,
   getById,
@@ -9,15 +9,21 @@ const {
   remove,
 } = require('../controllers/calendarController');
 
-// Semua route butuh login
+// All calendar routes require login
 router.use(protect);
 
+// Support both /api/calendar/events and /api/calendar
+router.get('/events', getAll);
+router.post('/events', create);
+router.get('/events/:id', getById);
+router.put('/events/:id', update);
+router.delete('/events/:id', remove);
+
+// Root aliases
 router.get('/', getAll);
 router.get('/:id', getById);
-
-// Hanya HR yang bisa menambah, mengubah, atau menghapus event kalender
-router.post('/', hrOnly, create);
-router.put('/:id', hrOnly, update);
-router.delete('/:id', hrOnly, remove);
+router.post('/', create);
+router.put('/:id', update);
+router.delete('/:id', remove);
 
 module.exports = router;

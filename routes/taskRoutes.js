@@ -7,23 +7,26 @@ const {
   create,
   update,
   updateStatus,
+  updateStoryPoint,
+  rejectQA,
   remove,
   getHistory,
 } = require('../controllers/taskController');
 
-// Semua route butuh login
+// All routes require login
 router.use(protect);
 
 router.get('/', getAll);
 router.get('/:id', getById);
 router.get('/:id/history', getHistory);
 
-// Hanya HR yang bisa melakukan CRUD penuh
-router.post('/', hrOnly, create);
+router.post('/', create);
 router.put('/:id', hrOnly, update);
 router.delete('/:id', hrOnly, remove);
 
-// Penerima tugas atau HR bisa memperbarui status tugas
+// Kanban workflows
 router.patch('/:id/status', updateStatus);
+router.patch('/:id/point', hrOnly, updateStoryPoint);
+router.post('/:id/reject', rejectQA);
 
 module.exports = router;

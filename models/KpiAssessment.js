@@ -9,18 +9,28 @@ const kpiAssessmentSchema = new mongoose.Schema({
   template: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'KpiTemplate',
-    required: true,
+    required: false,
   },
   period: {
     type: String,
     required: true,
   },
+  month: {
+    type: Number,
+  },
+  year: {
+    type: Number,
+  },
   scores: [
     {
       indicatorName: String,
+      category: String,
       target: Number,
       actual: Number,
+      weight: Number,
       score: Number, // hasil kalkulasi (actual/target * weight)
+      unit: String,
+      note: String,
     }
   ],
   totalScore: {

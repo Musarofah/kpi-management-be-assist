@@ -22,8 +22,32 @@ const taskSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'in-progress', 'completed', 'cancelled'],
-    default: 'pending',
+    enum: [
+      'Backlog', 'Ready', 'On Progress', 'Code Review', 'QA', 'Done',
+      'pending', 'in-progress', 'completed', 'cancelled'
+    ],
+    default: 'Backlog',
+  },
+  storyPoint: {
+    type: Number,
+    default: 0,
+  },
+  rejectCount: {
+    type: Number,
+    default: 0, // Backward counter saat task mental dari QA kembali ke On Progress
+  },
+  sprint: {
+    type: String,
+    default: 'Sprint 1',
+  },
+  isActiveSprint: {
+    type: Boolean,
+    default: true,
+  },
+  priority: {
+    type: String,
+    enum: ['Low', 'Medium', 'High', 'Urgent'],
+    default: 'Medium',
   },
   dueDate: {
     type: Date,
