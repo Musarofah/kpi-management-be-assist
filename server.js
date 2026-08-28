@@ -1,10 +1,17 @@
 require('dotenv').config();
+const dns = require('dns');
+try {
+  dns.setDefaultResultOrder('ipv4first');
+  dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+} catch (e) {}
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const { seedHRUsers } = require('./utils/seed');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Allowed Origins for CORS (Support Vite 5173, CRA/Next 3000, 127.0.0.1, and FRONTEND_URL)
 const allowedOrigins = [
@@ -38,7 +45,7 @@ mongoose.connect(process.env.MONGO_URI)
   })
   .catch((err) => console.error('❌ MongoDB connection error:', err));
 
-app.get('/', (req, res) => {
+app.get(['/', '/api'], (req, res) => {
   res.json({
     success: true,
     message: 'KPI Management Backend API is running smoothly 🚀',

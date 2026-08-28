@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { validatePassword } = require('../utils/passwordValidator');
 
 // Helper function to decode / verify Google Token
 const verifyGoogleToken = async (token) => {
@@ -76,6 +77,15 @@ exports.register = async (req, res) => {
       });
     }
 
+    // Validasi format password (minimal 8 karakter, huruf kapital, simbol)
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: passwordValidation.message,
+      });
+    }
+
     // Cek email udah dipakai belum
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -131,6 +141,15 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Validasi format password saat login (minimal 8 karakter, huruf kapital, dan simbol)
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: passwordValidation.message,
+      });
+    }
+
     // Perlu select('+password') karena password di model pakai select: false
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
@@ -148,10 +167,11 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Token JWT dengan sesi aktif 24 jam
     const token = jwt.sign(
       { id: user._id, role: user.role, email: user.email, name: user.name },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '24h' }
     );
 
     const userData = {
@@ -169,6 +189,7 @@ exports.login = async (req, res) => {
       success: true,
       message: 'Login berhasil',
       token,
+      expiresIn: '24h',
       data: userData,
       user: userData,
     });
@@ -224,10 +245,11 @@ exports.googleLogin = async (req, res) => {
       if (needsSave) await user.save();
     }
 
+    // Token JWT dengan sesi aktif 24 jam
     const appToken = jwt.sign(
       { id: user._id, role: user.role, email: user.email, name: user.name },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '24h' }
     );
 
     const userData = {
@@ -245,6 +267,7 @@ exports.googleLogin = async (req, res) => {
       success: true,
       message: 'Login Google berhasil',
       token: appToken,
+      expiresIn: '24h',
       data: userData,
       user: userData,
     });

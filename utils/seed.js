@@ -7,14 +7,14 @@ const seedHRUsers = async () => {
       {
         name: 'HR Admin',
         email: 'hr.admin@assist.id',
-        password: 'adminhr123',
+        password: 'AdminHR123!',
         role: 'hr',
         position: 'HR Administrator',
       },
       {
         name: 'HR People Partner',
         email: 'hr.people@assist.id',
-        password: 'hrpeople123',
+        password: 'HRpeople123!',
         role: 'hr',
         position: 'HR People & Culture Partner',
       },
