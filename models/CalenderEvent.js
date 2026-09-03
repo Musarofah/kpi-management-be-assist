@@ -22,6 +22,10 @@ const calendarEventSchema = new mongoose.Schema({
     enum: ['sprint_deadline', 'sprint_planning', 'review', 'retro', 'meeting', 'holiday', 'agenda', 'other'],
     default: 'agenda',
   },
+  category: {
+    type: String,
+    default: 'Feature',
+  },
   status: {
     type: String,
     default: 'Scheduled',
@@ -29,6 +33,14 @@ const calendarEventSchema = new mongoose.Schema({
   team: {
     type: String,
     default: 'General',
+  },
+  color: {
+    type: String,
+    default: 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
+  },
+  assignee: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
   },
   relatedTask: {
     type: mongoose.Schema.Types.ObjectId,
@@ -41,3 +53,4 @@ const calendarEventSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 module.exports = mongoose.model('CalendarEvent', calendarEventSchema);
+

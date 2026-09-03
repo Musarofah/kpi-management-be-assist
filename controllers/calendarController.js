@@ -1,5 +1,6 @@
 const CalendarEvent = require('../models/CalenderEvent');
 const Task = require('../models/Task');
+const User = require('../models/User');
 
 // GET ALL EVENTS
 exports.getAll = async (req, res) => {
@@ -45,14 +46,33 @@ exports.getAll = async (req, res) => {
 
     const events = await CalendarEvent.find(filter)
       .populate('createdBy', 'name email role avatar')
+      .populate('assignee', 'name')
       .populate('relatedTask', 'title status dueDate storyPoint')
       .sort({ date: 1 });
 
+    const formattedEvents = events.map(event => {
+      const d = new Date(event.date);
+      return {
+        id: event._id,
+        _id: event._id,
+        title: event.title,
+        day: d.getDate(),
+        month: d.getMonth() + 1,
+        year: d.getFullYear(),
+        category: event.category || 'Event',
+        team: event.team || 'General',
+        assignee: event.assignee ? event.assignee.name : 'Unassigned',
+        status: event.status || 'Scheduled',
+        color: event.color || 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
+        description: event.description
+      };
+    });
+
     res.json({
       success: true,
-      count: events.length,
-      data: events,
-      events,
+      count: formattedEvents.length,
+      data: formattedEvents,
+      events: formattedEvents,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -64,6 +84,7 @@ exports.getById = async (req, res) => {
   try {
     const event = await CalendarEvent.findById(req.params.id)
       .populate('createdBy', 'name email role avatar')
+      .populate('assignee', 'name')
       .populate('relatedTask', 'title status dueDate storyPoint');
 
     if (!event) {
@@ -83,29 +104,48 @@ exports.getById = async (req, res) => {
 // CREATE EVENT
 exports.create = async (req, res) => {
   try {
-    const { title, description, date, endDate, eventType, status, team, relatedTask } = req.body;
+    const { title, description, date, endDate, eventType, status, team, relatedTask, day, month, year, category, assignee, color } = req.body;
 
-    if (!title || !date) {
+    if (!title) {
       return res.status(400).json({
         success: false,
-        message: 'Judul event dan tanggal wajib diisi',
+        message: 'Judul event wajib diisi',
       });
+    }
+
+    // Handle FE date format
+    let eventDate = date ? new Date(date) : new Date();
+    if (day && month && year) {
+      eventDate = new Date(year, month - 1, day);
+    }
+
+    // Lookup assignee mapping
+    let assignedUserId = null;
+    if (assignee) {
+      const foundUser = await User.findOne({ name: new RegExp(`^${assignee}$`, 'i') });
+      if (foundUser) {
+        assignedUserId = foundUser._id;
+      }
     }
 
     const event = await CalendarEvent.create({
       title,
       description: description || '',
-      date: new Date(date),
+      date: eventDate,
       endDate: endDate ? new Date(endDate) : undefined,
       eventType: eventType || 'agenda',
       status: status || 'Scheduled',
       team: team || 'General',
+      category: category || 'Event',
+      color: color || 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
+      assignee: assignedUserId,
       relatedTask: relatedTask || undefined,
       createdBy: req.user ? req.user.id : undefined,
     });
 
     const populatedEvent = await CalendarEvent.findById(event._id)
       .populate('createdBy', 'name email role avatar')
+      .populate('assignee', 'name')
       .populate('relatedTask', 'title status dueDate storyPoint');
 
     res.status(201).json({
@@ -122,7 +162,7 @@ exports.create = async (req, res) => {
 // UPDATE EVENT
 exports.update = async (req, res) => {
   try {
-    const { title, description, date, endDate, eventType, status, team, relatedTask } = req.body;
+    const { title, description, date, endDate, eventType, status, team, relatedTask, day, month, year, category, assignee, color } = req.body;
 
     const event = await CalendarEvent.findById(req.params.id);
     if (!event) {
@@ -131,17 +171,34 @@ exports.update = async (req, res) => {
 
     if (title !== undefined) event.title = title;
     if (description !== undefined) event.description = description;
-    if (date !== undefined) event.date = new Date(date);
+    
+    if (day && month && year) {
+      event.date = new Date(year, month - 1, day);
+    } else if (date !== undefined) {
+      event.date = new Date(date);
+    }
+
     if (endDate !== undefined) event.endDate = endDate ? new Date(endDate) : undefined;
     if (eventType !== undefined) event.eventType = eventType;
     if (status !== undefined) event.status = status;
     if (team !== undefined) event.team = team;
+    if (category !== undefined) event.category = category;
+    if (color !== undefined) event.color = color;
+    
+    if (assignee) {
+      const foundUser = await User.findOne({ name: new RegExp(`^${assignee}$`, 'i') });
+      if (foundUser) {
+        event.assignee = foundUser._id;
+      }
+    }
+
     if (relatedTask !== undefined) event.relatedTask = relatedTask || undefined;
 
     await event.save();
 
     const populatedEvent = await CalendarEvent.findById(event._id)
       .populate('createdBy', 'name email role avatar')
+      .populate('assignee', 'name')
       .populate('relatedTask', 'title status dueDate storyPoint');
 
     res.json({
