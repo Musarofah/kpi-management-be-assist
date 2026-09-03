@@ -103,10 +103,28 @@ exports.getSprintTasks = async (req, res) => {
       .populate('assignedBy', 'name email avatar')
       .sort({ updatedAt: -1, createdAt: -1 });
 
+    const formattedTasks = tasks.map(task => {
+      const formatDate = (date) => {
+        if (!date) return '-';
+        return new Date(date).toISOString().split('T')[0];
+      };
+
+      return {
+        id: task._id,
+        _id: task._id,
+        title: task.title,
+        point: task.storyPoint || 0,
+        start: formatDate(task.startDate),
+        deadline: formatDate(task.dueDate),
+        status: task.status,
+        assignee: task.employee ? task.employee.name : 'Unassigned',
+      };
+    });
+
     res.json({
       success: true,
-      data: tasks,
-      tasks,
+      data: formattedTasks,
+      tasks: formattedTasks,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

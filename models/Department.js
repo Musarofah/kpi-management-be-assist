@@ -6,6 +6,18 @@ const departmentSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
+  code: {
+    type: String,
+    default: '',
+  },
+  head: {
+    type: String,
+    default: 'Unassigned',
+  },
+  employeeCount: {
+    type: Number,
+    default: 0,
+  },
   description: {
     type: String,
     default: '',
