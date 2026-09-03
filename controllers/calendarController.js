@@ -113,6 +113,13 @@ exports.create = async (req, res) => {
       });
     }
 
+    if (!date && (!day || !month || !year)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Judul event dan tanggal wajib diisi',
+      });
+    }
+
     // Handle FE date format
     let eventDate = date ? new Date(date) : new Date();
     if (day && month && year) {
