@@ -31,9 +31,52 @@ exports.getAll = async (req, res) => {
       .populate('reviewedBy', 'name email')
       .sort({ createdAt: -1 });
 
-    res.json(assessments);
+    const formatted = assessments.map(a => {
+      const getLevel = (score) => {
+        if (score >= 90) return 5;
+        if (score >= 80) return 4;
+        if (score >= 70) return 3;
+        if (score >= 60) return 2;
+        return 1;
+      };
+
+      const mapMonthName = (m) => {
+        const names = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        return names[m - 1] || 'Unknown';
+      };
+
+      let pMonth = a.month ? mapMonthName(a.month) : 'Agustus';
+      let pYear = a.year ? a.year.toString() : '2026';
+      
+      if (a.period && !a.month) {
+        const parts = a.period.split('-');
+        if (parts.length >= 2) {
+          pYear = parts[0];
+          pMonth = mapMonthName(parseInt(parts[1], 10));
+        }
+      }
+
+      return {
+        id: a._id,
+        _id: a._id,
+        employeeId: a.employee ? a.employee._id : null,
+        employeeName: a.employee ? a.employee.name : 'Unknown',
+        periodMonth: pMonth,
+        periodYear: pYear,
+        status: a.status ? a.status.charAt(0).toUpperCase() + a.status.slice(1) : 'Draft',
+        score: a.totalScore || 0,
+        level: getLevel(a.totalScore || 0),
+        submittedAt: a.submittedAt || null,
+        reviewedAt: a.reviewedAt || null,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: formatted,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -46,17 +89,60 @@ exports.getById = async (req, res) => {
       .populate('reviewedBy', 'name email');
 
     if (!assessment) {
-      return res.status(404).json({ message: 'KPI Assessment tidak ditemukan' });
+      return res.status(404).json({ success: false, message: 'KPI Assessment tidak ditemukan' });
     }
 
     // Karyawan hanya bisa lihat punya sendiri
     if (req.user.role === 'karyawan' && assessment.employee._id.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Akses ditolak' });
+      return res.status(403).json({ success: false, message: 'Akses ditolak' });
     }
 
-    res.json(assessment);
+    const getLevel = (score) => {
+      if (score >= 90) return 5;
+      if (score >= 80) return 4;
+      if (score >= 70) return 3;
+      if (score >= 60) return 2;
+      return 1;
+    };
+
+    const mapMonthName = (m) => {
+      const names = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+      return names[m - 1] || 'Unknown';
+    };
+
+    let pMonth = assessment.month ? mapMonthName(assessment.month) : 'Agustus';
+    let pYear = assessment.year ? assessment.year.toString() : '2026';
+    
+    if (assessment.period && !assessment.month) {
+      const parts = assessment.period.split('-');
+      if (parts.length >= 2) {
+        pYear = parts[0];
+        pMonth = mapMonthName(parseInt(parts[1], 10));
+      }
+    }
+
+    const formattedData = {
+      id: assessment._id,
+      _id: assessment._id,
+      employeeId: assessment.employee ? assessment.employee._id : null,
+      employeeName: assessment.employee ? assessment.employee.name : 'Unknown',
+      periodMonth: pMonth,
+      periodYear: pYear,
+      status: assessment.status ? assessment.status.charAt(0).toUpperCase() + assessment.status.slice(1) : 'Draft',
+      score: assessment.totalScore || 0,
+      level: getLevel(assessment.totalScore || 0),
+      submittedAt: assessment.submittedAt || null,
+      reviewedAt: assessment.reviewedAt || null,
+      scores: assessment.scores || [],
+    };
+
+    res.json({
+      success: true,
+      data: formattedData,
+      assessment: formattedData,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 

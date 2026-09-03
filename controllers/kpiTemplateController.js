@@ -16,9 +16,25 @@ exports.getAll = async (req, res) => {
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
 
-    res.json(templates);
+    const formattedTemplates = templates.map(t => {
+      return {
+        id: t._id,
+        _id: t._id,
+        name: t.name,
+        role: t.role,
+        department: t.department ? t.department.name : 'Unknown',
+        indicatorsCount: t.indicators ? t.indicators.length : 0,
+        indicators: t.indicators || [],
+      };
+    });
+
+    res.json({
+      success: true,
+      data: formattedTemplates,
+      templates: formattedTemplates,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -30,12 +46,24 @@ exports.getById = async (req, res) => {
       .populate('createdBy', 'name email');
 
     if (!template) {
-      return res.status(404).json({ message: 'KPI Template tidak ditemukan' });
+      return res.status(404).json({ success: false, message: 'KPI Template tidak ditemukan' });
     }
 
-    res.json(template);
+    res.json({
+      success: true,
+      data: {
+        id: template._id,
+        _id: template._id,
+        name: template.name,
+        role: template.role,
+        department: template.department ? template.department.name : 'Unknown',
+        indicatorsCount: template.indicators ? template.indicators.length : 0,
+        indicators: template.indicators || [],
+      },
+      template,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
