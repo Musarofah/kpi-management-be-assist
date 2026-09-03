@@ -1,5 +1,6 @@
 const Task = require('../models/Task');
 const TaskHistory = require('../models/TaskHistory');
+const User = require('../models/User');
 
 // Normalize status string to Kanban standard
 const normalizeStatus = (status) => {
@@ -49,11 +50,35 @@ exports.getAll = async (req, res) => {
       .populate('assignedBy', 'name email avatar')
       .sort({ createdAt: -1 });
 
+    const formattedTasks = tasks.map(task => {
+      const formatDate = (date) => {
+        if (!date) return '-';
+        return new Date(date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).replace('.', '');
+      };
+
+      return {
+        id: task._id,
+        _id: task._id,
+        title: task.title,
+        description: task.description,
+        category: task.category || 'Feature',
+        assignee: task.employee ? task.employee.name : 'Unassigned',
+        employee: task.employee, // for backend reference if needed
+        start: formatDate(task.startDate),
+        deadline: formatDate(task.dueDate),
+        sla: task.sla || '48 Jam',
+        status: task.status,
+        point: task.storyPoint,
+        backwardCount: task.rejectCount || 0,
+        createdAt: task.createdAt,
+      };
+    });
+
     res.json({
       success: true,
-      count: tasks.length,
-      data: tasks,
-      tasks,
+      count: formattedTasks.length,
+      data: formattedTasks,
+      tasks: formattedTasks,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -81,6 +106,22 @@ exports.getById = async (req, res) => {
   }
 };
 
+// parse indonesian date basic
+const parseIDDate = (dateStr) => {
+  if (!dateStr) return null;
+  const mapMonth = {
+    'jan': 'Jan', 'feb': 'Feb', 'mar': 'Mar', 'apr': 'Apr',
+    'mei': 'May', 'jun': 'Jun', 'jul': 'Jul', 'agu': 'Aug',
+    'sep': 'Sep', 'okt': 'Oct', 'nov': 'Nov', 'des': 'Dec'
+  };
+  let engDate = dateStr;
+  for (const [id, en] of Object.entries(mapMonth)) {
+    engDate = engDate.replace(new RegExp(id, 'i'), en);
+  }
+  const d = new Date(engDate);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 // CREATE TASK
 exports.create = async (req, res) => {
   try {
@@ -88,9 +129,15 @@ exports.create = async (req, res) => {
       title,
       description,
       employee,
+      assignee, // FE format
+      start, // FE format
+      deadline, // FE format
       dueDate,
       kpiIndicator,
+      point, // FE format
       storyPoint,
+      category, // FE format
+      sla, // FE format
       priority,
       status,
       sprint,
@@ -103,18 +150,33 @@ exports.create = async (req, res) => {
       });
     }
 
-    const assignedEmployee = employee || req.user.id;
-    const taskDueDate = dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // default +7 hari
+    let assignedEmployeeId = employee;
+    if (assignee && !assignedEmployeeId) {
+      const foundUser = await User.findOne({ name: new RegExp(assignee, 'i') });
+      if (foundUser) {
+        assignedEmployeeId = foundUser._id;
+      }
+    }
+    
+    // fallback to current user if both missing
+    assignedEmployeeId = assignedEmployeeId || req.user.id;
+
+    const taskStartDate = parseIDDate(start) || Date.now();
+    const taskDueDate = parseIDDate(deadline) || (dueDate ? new Date(dueDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+    
     const initialStatus = status ? normalizeStatus(status) : 'Backlog';
 
     const task = await Task.create({
       title,
       description: description || '',
-      employee: assignedEmployee,
+      employee: assignedEmployeeId,
       assignedBy: req.user.id,
+      startDate: taskStartDate,
       dueDate: taskDueDate,
+      category: category || 'Feature',
+      sla: sla || '48 Jam',
       kpiIndicator: kpiIndicator || '',
-      storyPoint: Number(storyPoint) || 0,
+      storyPoint: point !== undefined ? Number(point) : (Number(storyPoint) || 0),
       priority: priority || 'Medium',
       status: initialStatus,
       sprint: sprint || 'Sprint 1',
@@ -144,6 +206,7 @@ exports.create = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
 
 // UPDATE TASK DETAILS (HR Only)
 exports.update = async (req, res) => {

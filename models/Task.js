@@ -28,6 +28,10 @@ const taskSchema = new mongoose.Schema({
     ],
     default: 'Backlog',
   },
+  category: {
+    type: String,
+    default: 'Feature',
+  },
   storyPoint: {
     type: Number,
     default: 0,
@@ -49,9 +53,17 @@ const taskSchema = new mongoose.Schema({
     enum: ['Low', 'Medium', 'High', 'Urgent'],
     default: 'Medium',
   },
+  startDate: {
+    type: Date,
+    default: Date.now,
+  },
   dueDate: {
     type: Date,
     required: [true, 'Tenggat waktu (due date) wajib diisi'],
+  },
+  sla: {
+    type: String,
+    default: '48 Jam',
   },
   kpiIndicator: {
     type: String, // Menghubungkan task dengan indikator KPI tertentu
