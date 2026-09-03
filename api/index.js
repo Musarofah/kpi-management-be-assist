@@ -6,9 +6,8 @@ try {
 } catch (e) {}
 
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
-const { seedHRUsers } = require('../utils/seed');
+const connectDB = require('../utils/connectDB');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -35,12 +34,20 @@ app.use(cors({
 
 app.use(express.json());
 
-mongoose.connect(process.env.MONGO_URI)
-  .then(async () => {
-    console.log('✅ MongoDB connected');
-    await seedHRUsers();
-  })
-  .catch((err) => console.error('❌ MongoDB connection error:', err));
+// Middleware: pastikan MongoDB terhubung sebelum setiap request diproses
+// Ini WAJIB untuk Vercel serverless — tanpa ini, cold start akan timeout
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('❌ DB connection failed:', err.message);
+    return res.status(503).json({
+      success: false,
+      message: 'Database tidak dapat dihubungi. Silakan coba lagi.',
+    });
+  }
+});
 
 app.get(['/', '/api'], (req, res) => {
   res.json({
