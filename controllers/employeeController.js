@@ -109,7 +109,7 @@ exports.create = async (req, res) => {
     // Handle role/position mapping (FE sends role="Frontend Developer")
     let userRole = role;
     let userPosition = position;
-    if (role && !['karyawan', 'hr', 'admin'].includes(role.toLowerCase())) {
+    if (role && !['karyawan', 'hr', 'admin', 'po', 'product_owner'].includes(role.toLowerCase())) {
       userPosition = role;
       userRole = 'karyawan';
     } else if (!role) {
@@ -218,7 +218,7 @@ exports.update = async (req, res) => {
       }
 
       if (role !== undefined) {
-        if (['karyawan', 'hr', 'admin'].includes(role.toLowerCase())) {
+        if (['karyawan', 'hr', 'admin', 'po', 'product_owner'].includes(role.toLowerCase())) {
           user.role = role.toLowerCase();
         } else {
           user.position = role;

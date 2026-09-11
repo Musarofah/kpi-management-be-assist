@@ -21,12 +21,13 @@ router.get('/:id', getById);
 router.get('/:id/history', getHistory);
 
 router.post('/', create);
-router.put('/:id', hrOnly, update);
-router.delete('/:id', hrOnly, remove);
+router.put('/:id', update);
+router.delete('/:id', remove);
 
 // Kanban workflows
 router.patch('/:id/status', updateStatus);
-router.patch('/:id/point', hrOnly, updateStoryPoint);
+router.patch('/:id/point', updateStoryPoint);
 router.post('/:id/reject', rejectQA);
+
 
 module.exports = router;

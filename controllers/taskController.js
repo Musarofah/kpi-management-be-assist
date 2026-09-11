@@ -20,9 +20,13 @@ exports.getAll = async (req, res) => {
   try {
     const filter = {};
 
-    // Karyawan: jika diinginkan filter hanya miliknya saat query `my=true` atau default jika role karyawan
-    if (req.user && req.user.role === 'karyawan' && req.query.my === 'true') {
-      filter.employee = req.user.id;
+    // Privacy & Scoping Access Control for non-admin users (PO, Karyawan, HR):
+    // A user can ONLY view tasks where assignedBy === req.user.id OR employee === req.user.id
+    if (req.user && req.user.role !== 'admin') {
+      filter.$or = [
+        { assignedBy: req.user.id },
+        { employee: req.user.id },
+      ];
     }
 
     if (req.query.employee) {
@@ -46,8 +50,8 @@ exports.getAll = async (req, res) => {
     }
 
     const tasks = await Task.find(filter)
-      .populate('employee', 'name email department position avatar')
-      .populate('assignedBy', 'name email avatar')
+      .populate('employee', 'name email department position avatar role')
+      .populate('assignedBy', 'name email avatar role')
       .sort({ createdAt: -1 });
 
     const formattedTasks = tasks.map(task => {
@@ -64,6 +68,7 @@ exports.getAll = async (req, res) => {
         category: task.category || 'Feature',
         assignee: task.employee ? task.employee.name : 'Unassigned',
         employee: task.employee, // for backend reference if needed
+        assignedBy: task.assignedBy,
         start: formatDate(task.startDate),
         deadline: formatDate(task.dueDate),
         sla: task.sla || '48 Jam',
@@ -89,11 +94,23 @@ exports.getAll = async (req, res) => {
 exports.getById = async (req, res) => {
   try {
     const task = await Task.findById(req.params.id)
-      .populate('employee', 'name email department position avatar')
-      .populate('assignedBy', 'name email avatar');
+      .populate('employee', 'name email department position avatar role')
+      .populate('assignedBy', 'name email avatar role');
 
     if (!task) {
       return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
+    }
+
+    // Access control: User must be creator (assignedBy), recipient (employee), or admin
+    const isCreator = task.assignedBy && task.assignedBy._id.toString() === req.user.id;
+    const isAssignee = task.employee && task.employee._id.toString() === req.user.id;
+    const isAdmin = req.user && req.user.role === 'admin';
+
+    if (!isCreator && !isAssignee && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak, Anda tidak memiliki akses ke task ini',
+      });
     }
 
     res.json({
@@ -152,13 +169,17 @@ exports.create = async (req, res) => {
 
     let assignedEmployeeId = employee;
     if (assignee && !assignedEmployeeId) {
-      const foundUser = await User.findOne({ name: new RegExp(assignee, 'i') });
-      if (foundUser) {
-        assignedEmployeeId = foundUser._id;
+      if (mongoose.Types.ObjectId.isValid(assignee)) {
+        assignedEmployeeId = assignee;
+      } else {
+        const foundUser = await User.findOne({ name: new RegExp(assignee, 'i') });
+        if (foundUser) {
+          assignedEmployeeId = foundUser._id;
+        }
       }
     }
     
-    // fallback to current user if both missing
+    // fallback to current user if missing (self-assigned task)
     assignedEmployeeId = assignedEmployeeId || req.user.id;
 
     const taskStartDate = parseIDDate(start) || Date.now();
@@ -193,8 +214,8 @@ exports.create = async (req, res) => {
     });
 
     const populatedTask = await Task.findById(task._id)
-      .populate('employee', 'name email department position avatar')
-      .populate('assignedBy', 'name email avatar');
+      .populate('employee', 'name email department position avatar role')
+      .populate('assignedBy', 'name email avatar role');
 
     res.status(201).json({
       success: true,
@@ -208,7 +229,7 @@ exports.create = async (req, res) => {
 };
 
 
-// UPDATE TASK DETAILS (HR Only)
+// UPDATE TASK DETAILS
 exports.update = async (req, res) => {
   try {
     const {
@@ -226,6 +247,18 @@ exports.update = async (req, res) => {
     const task = await Task.findById(req.params.id);
     if (!task) {
       return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
+    }
+
+    // Permission check: Creator (assignedBy), recipient (employee), or admin can update task details
+    const isCreator = task.assignedBy && task.assignedBy.toString() === req.user.id;
+    const isAssignee = task.employee && task.employee.toString() === req.user.id;
+    const isAdmin = req.user && req.user.role === 'admin';
+
+    if (!isCreator && !isAssignee && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak, Anda tidak diizinkan memperbarui task ini',
+      });
     }
 
     if (title !== undefined) task.title = title;
@@ -248,8 +281,8 @@ exports.update = async (req, res) => {
     });
 
     const populatedTask = await Task.findById(task._id)
-      .populate('employee', 'name email department position avatar')
-      .populate('assignedBy', 'name email avatar');
+      .populate('employee', 'name email department position avatar role')
+      .populate('assignedBy', 'name email avatar role');
 
     res.json({
       success: true,
@@ -281,6 +314,18 @@ exports.updateStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
     }
 
+    // Permission check
+    const isCreator = task.assignedBy && task.assignedBy.toString() === req.user.id;
+    const isAssignee = task.employee && task.employee.toString() === req.user.id;
+    const isAdmin = req.user && req.user.role === 'admin';
+
+    if (!isCreator && !isAssignee && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak, Anda tidak diizinkan mengubah status task ini',
+      });
+    }
+
     const previousStatus = task.status;
     task.status = newStatus;
     await task.save();
@@ -295,8 +340,8 @@ exports.updateStatus = async (req, res) => {
     });
 
     const populatedTask = await Task.findById(task._id)
-      .populate('employee', 'name email department position avatar')
-      .populate('assignedBy', 'name email avatar');
+      .populate('employee', 'name email department position avatar role')
+      .populate('assignedBy', 'name email avatar role');
 
     res.json({
       success: true,
@@ -309,7 +354,7 @@ exports.updateStatus = async (req, res) => {
   }
 };
 
-// UPDATE STORY POINT (Khusus HR / PO)
+// UPDATE STORY POINT
 exports.updateStoryPoint = async (req, res) => {
   try {
     const { storyPoint, point, sp } = req.body;
@@ -327,6 +372,18 @@ exports.updateStoryPoint = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
     }
 
+    // Permission check
+    const isCreator = task.assignedBy && task.assignedBy.toString() === req.user.id;
+    const isAssignee = task.employee && task.employee.toString() === req.user.id;
+    const isAdmin = req.user && req.user.role === 'admin';
+
+    if (!isCreator && !isAssignee && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak, Anda tidak diizinkan mengubah Story Point task ini',
+      });
+    }
+
     task.storyPoint = Number(pointValue);
     await task.save();
 
@@ -338,8 +395,8 @@ exports.updateStoryPoint = async (req, res) => {
     });
 
     const populatedTask = await Task.findById(task._id)
-      .populate('employee', 'name email department position avatar')
-      .populate('assignedBy', 'name email avatar');
+      .populate('employee', 'name email department position avatar role')
+      .populate('assignedBy', 'name email avatar role');
 
     res.json({
       success: true,
@@ -362,6 +419,18 @@ exports.rejectQA = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
     }
 
+    // Permission check
+    const isCreator = task.assignedBy && task.assignedBy.toString() === req.user.id;
+    const isAssignee = task.employee && task.employee.toString() === req.user.id;
+    const isAdmin = req.user && req.user.role === 'admin';
+
+    if (!isCreator && !isAssignee && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak, Anda tidak diizinkan menolak QA task ini',
+      });
+    }
+
     const previousStatus = task.status;
     task.status = 'On Progress';
     task.rejectCount = (task.rejectCount || 0) + 1;
@@ -379,8 +448,8 @@ exports.rejectQA = async (req, res) => {
     });
 
     const populatedTask = await Task.findById(task._id)
-      .populate('employee', 'name email department position avatar')
-      .populate('assignedBy', 'name email avatar');
+      .populate('employee', 'name email department position avatar role')
+      .populate('assignedBy', 'name email avatar role');
 
     res.json({
       success: true,
@@ -393,14 +462,25 @@ exports.rejectQA = async (req, res) => {
   }
 };
 
-// DELETE TASK (HR Only)
+// DELETE TASK (Creator or Admin)
 exports.remove = async (req, res) => {
   try {
-    const task = await Task.findByIdAndDelete(req.params.id);
+    const task = await Task.findById(req.params.id);
     if (!task) {
       return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
     }
 
+    const isCreator = task.assignedBy && task.assignedBy.toString() === req.user.id;
+    const isAdmin = req.user && req.user.role === 'admin';
+
+    if (!isCreator && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak, hanya pembuat task atau Admin yang dapat menghapus task',
+      });
+    }
+
+    await Task.findByIdAndDelete(req.params.id);
     await TaskHistory.deleteMany({ task: req.params.id });
 
     res.json({
@@ -420,6 +500,18 @@ exports.getHistory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
     }
 
+    // Permission check
+    const isCreator = task.assignedBy && task.assignedBy.toString() === req.user.id;
+    const isAssignee = task.employee && task.employee.toString() === req.user.id;
+    const isAdmin = req.user && req.user.role === 'admin';
+
+    if (!isCreator && !isAssignee && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak, Anda tidak memiliki akses ke histori task ini',
+      });
+    }
+
     const history = await TaskHistory.find({ task: req.params.id })
       .populate('user', 'name email role avatar')
       .sort({ createdAt: -1 });
@@ -433,3 +525,4 @@ exports.getHistory = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
