@@ -236,9 +236,16 @@ exports.update = async (req, res) => {
       title,
       description,
       employee,
+      assignee, // FE format
+      start, // FE format
+      deadline, // FE format
       dueDate,
       kpiIndicator,
+      point, // FE format
       storyPoint,
+      sp,
+      category, // FE format
+      sla, // FE format
       priority,
       status,
       sprint,
@@ -263,10 +270,43 @@ exports.update = async (req, res) => {
 
     if (title !== undefined) task.title = title;
     if (description !== undefined) task.description = description;
-    if (employee !== undefined) task.employee = employee;
-    if (dueDate !== undefined) task.dueDate = dueDate;
+
+    // Handle employee / assignee update
+    let targetEmployee = employee;
+    if (assignee !== undefined && !targetEmployee) {
+      if (mongoose.Types.ObjectId.isValid(assignee)) {
+        targetEmployee = assignee;
+      } else if (assignee) {
+        const foundUser = await User.findOne({ name: new RegExp(assignee, 'i') });
+        if (foundUser) {
+          targetEmployee = foundUser._id;
+        }
+      }
+    }
+    if (targetEmployee !== undefined && targetEmployee !== '') {
+      task.employee = targetEmployee;
+    }
+
+    if (start !== undefined && start !== '') {
+      const parsedStart = parseIDDate(start) || new Date(start);
+      if (parsedStart && !isNaN(parsedStart.getTime())) task.startDate = parsedStart;
+    }
+
+    const targetDueDate = deadline || dueDate;
+    if (targetDueDate !== undefined && targetDueDate !== '') {
+      const parsedDue = parseIDDate(targetDueDate) || new Date(targetDueDate);
+      if (parsedDue && !isNaN(parsedDue.getTime())) task.dueDate = parsedDue;
+    }
+
+    if (category !== undefined) task.category = category;
+    if (sla !== undefined) task.sla = sla;
     if (kpiIndicator !== undefined) task.kpiIndicator = kpiIndicator;
-    if (storyPoint !== undefined) task.storyPoint = Number(storyPoint);
+
+    const pointVal = point !== undefined ? point : (storyPoint !== undefined ? storyPoint : sp);
+    if (pointVal !== undefined && pointVal !== '' && !isNaN(Number(pointVal))) {
+      task.storyPoint = Number(pointVal);
+    }
+
     if (priority !== undefined) task.priority = priority;
     if (status !== undefined) task.status = normalizeStatus(status);
     if (sprint !== undefined) task.sprint = sprint;
@@ -294,6 +334,7 @@ exports.update = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
 
 // UPDATE TASK STATUS (Kanban Columns)
 exports.updateStatus = async (req, res) => {
