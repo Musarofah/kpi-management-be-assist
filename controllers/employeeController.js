@@ -156,3 +156,95 @@ exports.create = async (req, res) => {
   }
 };
 
+// UPDATE EMPLOYEE (HR Only)
+exports.update = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, password, role, department, position, avatar } = req.body;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Karyawan tidak ditemukan',
+      });
+    }
+
+    // Check email uniqueness if email is changed
+    if (email && email.toLowerCase() !== user.email) {
+      const existingUser = await User.findOne({ email: email.toLowerCase() });
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email sudah digunakan oleh pengguna lain',
+        });
+      }
+      user.email = email.toLowerCase();
+    }
+
+    if (name) user.name = name;
+    if (avatar !== undefined) user.avatar = avatar;
+
+    // Handle department mapping (FE might send department name string or ObjectId)
+    if (department !== undefined) {
+      if (department && !mongoose.Types.ObjectId.isValid(department)) {
+        let dept = await Department.findOne({ name: new RegExp(`^${department}$`, 'i') });
+        if (!dept) {
+          dept = await Department.create({ name: department });
+        }
+        user.department = dept._id;
+      } else if (department && mongoose.Types.ObjectId.isValid(department)) {
+        user.department = department;
+      } else if (department === '' || department === null) {
+        user.department = undefined;
+      }
+    }
+
+    // Handle role/position mapping (FE sends role="Frontend Developer")
+    if (role !== undefined) {
+      if (['karyawan', 'hr', 'admin'].includes(role.toLowerCase())) {
+        user.role = role.toLowerCase();
+      } else {
+        user.position = role;
+      }
+    }
+
+    if (position !== undefined) {
+      user.position = position;
+    }
+
+    // Optional password update
+    if (password && password.trim() !== '') {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      user.password = hashedPassword;
+    }
+
+    await user.save();
+
+    const populatedUser = await User.findById(user._id).populate('department', 'name');
+
+    const userData = {
+      id: populatedUser._id,
+      _id: populatedUser._id,
+      name: populatedUser.name,
+      email: populatedUser.email,
+      role: populatedUser.position || 'Staff', // FE expects role to be position
+      backendRole: populatedUser.role,
+      department: populatedUser.department ? populatedUser.department.name : '-',
+      position: populatedUser.position,
+      avatar: populatedUser.avatar,
+      createdAt: populatedUser.createdAt,
+    };
+
+    res.json({
+      success: true,
+      message: 'Data karyawan berhasil diperbarui',
+      data: userData,
+      employee: userData,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
