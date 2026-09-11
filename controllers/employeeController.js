@@ -156,11 +156,22 @@ exports.create = async (req, res) => {
   }
 };
 
-// UPDATE EMPLOYEE (HR Only)
+// UPDATE EMPLOYEE (HR/Admin or Self-Update)
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, password, role, department, position, avatar } = req.body;
+    const { name, email, password, role, department, position, avatar, avatarUrl, photo, image } = req.body;
+
+    // Authorization: User can update their own profile, or HR/Admin can update any profile
+    const isSelfUpdate = req.user && req.user.id === id;
+    const isHRorAdmin = req.user && (req.user.role === 'hr' || req.user.role === 'admin');
+
+    if (!isSelfUpdate && !isHRorAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak, Anda hanya dapat mengubah profil Anda sendiri',
+      });
+    }
 
     const user = await User.findById(id);
     if (!user) {
@@ -173,7 +184,7 @@ exports.update = async (req, res) => {
     // Check email uniqueness if email is changed
     if (email && email.toLowerCase() !== user.email) {
       const existingUser = await User.findOne({ email: email.toLowerCase() });
-      if (existingUser) {
+      if (existingUser && existingUser._id.toString() !== id) {
         return res.status(400).json({
           success: false,
           message: 'Email sudah digunakan oleh pengguna lain',
@@ -183,35 +194,42 @@ exports.update = async (req, res) => {
     }
 
     if (name) user.name = name;
-    if (avatar !== undefined) user.avatar = avatar;
 
-    // Handle department mapping (FE might send department name string or ObjectId)
-    if (department !== undefined) {
-      if (department && !mongoose.Types.ObjectId.isValid(department)) {
-        let dept = await Department.findOne({ name: new RegExp(`^${department}$`, 'i') });
-        if (!dept) {
-          dept = await Department.create({ name: department });
-        }
-        user.department = dept._id;
-      } else if (department && mongoose.Types.ObjectId.isValid(department)) {
-        user.department = department;
-      } else if (department === '' || department === null) {
-        user.department = undefined;
-      }
+    // Handle avatar update (supports avatar, avatarUrl, photo, image)
+    const newAvatar = avatar !== undefined ? avatar : (avatarUrl !== undefined ? avatarUrl : (photo !== undefined ? photo : image));
+    if (newAvatar !== undefined) {
+      user.avatar = newAvatar;
     }
 
-    // Handle role/position mapping (FE sends role="Frontend Developer")
-    if (role !== undefined) {
-      if (['karyawan', 'hr', 'admin'].includes(role.toLowerCase())) {
-        user.role = role.toLowerCase();
-      } else {
-        user.position = role;
+    // Only HR/Admin can update department and role
+    if (isHRorAdmin) {
+      if (department !== undefined) {
+        if (department && !mongoose.Types.ObjectId.isValid(department)) {
+          let dept = await Department.findOne({ name: new RegExp(`^${department}$`, 'i') });
+          if (!dept) {
+            dept = await Department.create({ name: department });
+          }
+          user.department = dept._id;
+        } else if (department && mongoose.Types.ObjectId.isValid(department)) {
+          user.department = department;
+        } else if (department === '' || department === null) {
+          user.department = undefined;
+        }
+      }
+
+      if (role !== undefined) {
+        if (['karyawan', 'hr', 'admin'].includes(role.toLowerCase())) {
+          user.role = role.toLowerCase();
+        } else {
+          user.position = role;
+        }
       }
     }
 
     if (position !== undefined) {
       user.position = position;
     }
+
 
     // Optional password update
     if (password && password.trim() !== '') {

@@ -7,8 +7,9 @@ router.use(protect);
 
 router.get('/', getAll);
 router.post('/', hrOnly, create);
-router.put('/:id', hrOnly, update);
-router.patch('/:id', hrOnly, update);
+router.put('/:id', update);
+router.patch('/:id', update);
+
 
 module.exports = router;
 
