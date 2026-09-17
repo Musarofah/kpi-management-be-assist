@@ -11,8 +11,8 @@ exports.getAll = async (req, res) => {
     if (req.query.department) {
       filter.department = req.query.department;
     }
-    // Jika req.query.role is strictly hr/admin/karyawan, then filter by role
-    if (req.query.role && ['karyawan', 'hr', 'admin'].includes(req.query.role.toLowerCase())) {
+    // Jika req.query.role is strictly hr/karyawan, then filter by role
+    if (req.query.role && ['karyawan', 'hr'].includes(req.query.role.toLowerCase())) {
       filter.role = req.query.role;
     }
 
@@ -109,7 +109,7 @@ exports.create = async (req, res) => {
     // Handle role/position mapping (FE sends role="Frontend Developer")
     let userRole = role;
     let userPosition = position;
-    if (role && !['karyawan', 'hr', 'admin', 'po', 'product_owner'].includes(role.toLowerCase())) {
+    if (role && !['karyawan', 'hr', 'po', 'product_owner'].includes(role.toLowerCase())) {
       userPosition = role;
       userRole = 'karyawan';
     } else if (!role) {
@@ -164,7 +164,7 @@ exports.update = async (req, res) => {
 
     // Authorization: User can update their own profile, or HR/Admin can update any profile
     const isSelfUpdate = req.user && req.user.id === id;
-    const isHRorAdmin = req.user && (req.user.role === 'hr' || req.user.role === 'admin');
+    const isHRorAdmin = req.user && req.user.role === 'hr';
 
     if (!isSelfUpdate && !isHRorAdmin) {
       return res.status(403).json({
@@ -218,7 +218,7 @@ exports.update = async (req, res) => {
       }
 
       if (role !== undefined) {
-        if (['karyawan', 'hr', 'admin', 'po', 'product_owner'].includes(role.toLowerCase())) {
+        if (['karyawan', 'hr', 'po', 'product_owner'].includes(role.toLowerCase())) {
           user.role = role.toLowerCase();
         } else {
           user.position = role;

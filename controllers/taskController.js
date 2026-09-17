@@ -20,14 +20,12 @@ exports.getAll = async (req, res) => {
   try {
     const filter = {};
 
-    // Privacy & Scoping Access Control for non-admin users (PO, Karyawan, HR):
+    // Privacy & Scoping Access Control:
     // A user can ONLY view tasks where assignedBy === req.user.id OR employee === req.user.id
-    if (req.user && req.user.role !== 'admin') {
-      filter.$or = [
-        { assignedBy: req.user.id },
-        { employee: req.user.id },
-      ];
-    }
+    filter.$or = [
+      { assignedBy: req.user.id },
+      { employee: req.user.id },
+    ];
 
     if (req.query.employee) {
       filter.employee = req.query.employee;
@@ -101,12 +99,11 @@ exports.getById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
     }
 
-    // Access control: User must be creator (assignedBy), recipient (employee), or admin
+    // Access control: User must be creator (assignedBy) or recipient (employee)
     const isCreator = task.assignedBy && task.assignedBy._id.toString() === req.user.id;
     const isAssignee = task.employee && task.employee._id.toString() === req.user.id;
-    const isAdmin = req.user && req.user.role === 'admin';
 
-    if (!isCreator && !isAssignee && !isAdmin) {
+    if (!isCreator && !isAssignee) {
       return res.status(403).json({
         success: false,
         message: 'Akses ditolak, Anda tidak memiliki akses ke task ini',
@@ -256,12 +253,11 @@ exports.update = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Task tidak ditemukan' });
     }
 
-    // Permission check: Creator (assignedBy), recipient (employee), or admin can update task details
+    // Permission check: Creator (assignedBy) atau recipient (employee) yang dapat update task
     const isCreator = task.assignedBy && task.assignedBy.toString() === req.user.id;
     const isAssignee = task.employee && task.employee.toString() === req.user.id;
-    const isAdmin = req.user && req.user.role === 'admin';
 
-    if (!isCreator && !isAssignee && !isAdmin) {
+    if (!isCreator && !isAssignee) {
       return res.status(403).json({
         success: false,
         message: 'Akses ditolak, Anda tidak diizinkan memperbarui task ini',
@@ -358,9 +354,8 @@ exports.updateStatus = async (req, res) => {
     // Permission check
     const isCreator = task.assignedBy && task.assignedBy.toString() === req.user.id;
     const isAssignee = task.employee && task.employee.toString() === req.user.id;
-    const isAdmin = req.user && req.user.role === 'admin';
 
-    if (!isCreator && !isAssignee && !isAdmin) {
+    if (!isCreator && !isAssignee) {
       return res.status(403).json({
         success: false,
         message: 'Akses ditolak, Anda tidak diizinkan mengubah status task ini',
@@ -416,9 +411,8 @@ exports.updateStoryPoint = async (req, res) => {
     // Permission check
     const isCreator = task.assignedBy && task.assignedBy.toString() === req.user.id;
     const isAssignee = task.employee && task.employee.toString() === req.user.id;
-    const isAdmin = req.user && req.user.role === 'admin';
 
-    if (!isCreator && !isAssignee && !isAdmin) {
+    if (!isCreator && !isAssignee) {
       return res.status(403).json({
         success: false,
         message: 'Akses ditolak, Anda tidak diizinkan mengubah Story Point task ini',
@@ -463,9 +457,8 @@ exports.rejectQA = async (req, res) => {
     // Permission check
     const isCreator = task.assignedBy && task.assignedBy.toString() === req.user.id;
     const isAssignee = task.employee && task.employee.toString() === req.user.id;
-    const isAdmin = req.user && req.user.role === 'admin';
 
-    if (!isCreator && !isAssignee && !isAdmin) {
+    if (!isCreator && !isAssignee) {
       return res.status(403).json({
         success: false,
         message: 'Akses ditolak, Anda tidak diizinkan menolak QA task ini',
@@ -512,12 +505,11 @@ exports.remove = async (req, res) => {
     }
 
     const isCreator = task.assignedBy && task.assignedBy.toString() === req.user.id;
-    const isAdmin = req.user && req.user.role === 'admin';
 
-    if (!isCreator && !isAdmin) {
+    if (!isCreator) {
       return res.status(403).json({
         success: false,
-        message: 'Akses ditolak, hanya pembuat task atau Admin yang dapat menghapus task',
+        message: 'Akses ditolak, hanya pembuat task yang dapat menghapus task',
       });
     }
 
@@ -544,9 +536,8 @@ exports.getHistory = async (req, res) => {
     // Permission check
     const isCreator = task.assignedBy && task.assignedBy.toString() === req.user.id;
     const isAssignee = task.employee && task.employee.toString() === req.user.id;
-    const isAdmin = req.user && req.user.role === 'admin';
 
-    if (!isCreator && !isAssignee && !isAdmin) {
+    if (!isCreator && !isAssignee) {
       return res.status(403).json({
         success: false,
         message: 'Akses ditolak, Anda tidak memiliki akses ke histori task ini',
